@@ -341,9 +341,9 @@ class WebSocketMonitorServer:
         
     def start_server(self):
         """Start both HTTP and WebSocket servers."""
-        print(f"Monitor server starting...")
-        print(f"  HTTP server: http://{self.host}:{self.http_port}")
-        print(f"  WebSocket server: ws://{self.host}:{self.websocket_port}")
+        print(f"Monitor server starting...", file=sys.stderr)
+        print(f"  HTTP server: http://{self.host}:{self.http_port}", file=sys.stderr)
+        print(f"  WebSocket server: ws://{self.host}:{self.websocket_port}", file=sys.stderr)
         
         # Start HTTP server in separate thread
         http_thread = threading.Thread(target=self._start_http_server, daemon=True)
@@ -359,7 +359,7 @@ class WebSocketMonitorServer:
         )
         websocket_thread.start()
         
-        print("Monitor server ready. Use monitor utility or open URL in browser.")
+        print("Monitor server ready. Use monitor utility or open URL in browser.", file=sys.stderr)
         
     def _run_websocket_server(self):
         """Run the WebSocket server in its own event loop."""
@@ -369,17 +369,31 @@ class WebSocketMonitorServer:
         self.broadcast_queue = asyncio.Queue()
         
         # Start the broadcast queue processor
-        self.event_loop.create_task(self._process_broadcast_queue())
+        queue_task = self.event_loop.create_task(self._process_broadcast_queue())
         
         # Start the WebSocket server
-        server = websockets.serve(
-            self.handle_websocket_client,
-            self.host,
-            self.websocket_port
-        )
+        async def start_server():
+            try:
+                server = await websockets.serve(
+                    self.handle_websocket_client,
+                    self.host,
+                    self.websocket_port
+                )
+                print(f"WebSocket server started on ws://{self.host}:{self.websocket_port}", file=sys.stderr)
+                return server
+            except Exception as e:
+                print(f"Failed to start WebSocket server: {e}", file=sys.stderr)
+                self.running = False
+                return None
         
-        self.event_loop.run_until_complete(server)
-        self.event_loop.run_forever()
+        # Run the server
+        try:
+            server = self.event_loop.run_until_complete(start_server())
+            if server and self.running:
+                self.event_loop.run_forever()
+        except Exception as e:
+            print(f"WebSocket server error: {e}", file=sys.stderr)
+            self.running = False
         
     async def _process_broadcast_queue(self):
         """Process broadcast events from the queue."""
@@ -597,10 +611,6 @@ class AsciinemaRecorder:
         self.write_header()
         self.setup_terminal()
         
-        # Start monitor server if enabled
-        if self.monitor_server:
-            self.monitor_server.start_server()
-        
         try:
             # Create pseudo-terminal
             master_fd, slave_fd = pty.openpty()
@@ -637,6 +647,12 @@ class AsciinemaRecorder:
                 # Parent process - handle I/O
                 os.close(slave_fd)
                 os.close(stderr_write)
+                
+                # Start monitor server after fork (parent process only)
+                if self.monitor_server:
+                    self.monitor_server.start_server()
+                    # Give server a moment to start
+                    time.sleep(0.5)
                 
                 try:
                     self._handle_io(master_fd, stderr_read, pid)
