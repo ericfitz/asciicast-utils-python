@@ -37,9 +37,10 @@ class AsciinemaPlayer:
     def set_terminal_title(self, title: str) -> None:
         """Set the terminal window title using ANSI escape sequences."""
         # Use both OSC 0 (icon and title) and OSC 2 (title only) for compatibility
-        sys.stdout.write(f'\033]0;{title}\007')
-        sys.stdout.write(f'\033]2;{title}\007')
-        sys.stdout.flush()
+        # Write to stderr to avoid interfering with session output
+        sys.stderr.write(f'\033]0;{title}\007')
+        sys.stderr.write(f'\033]2;{title}\007')
+        sys.stderr.flush()
         
     def load_cast_file(self) -> bool:
         """Load and parse the asciicast file."""
@@ -165,7 +166,7 @@ class AsciinemaPlayer:
             print(f"Events: {len(self.events)}")
             print("\nControls during playback:")
             print("  - Space: Pause/unpause (status shown in title bar)")
-            print("  - Tab: Skip to next input and pause")
+            print("  - Tab: Skip to next input/marker and pause")
             print("  - Ctrl+C: Stop playback")
             print("\nPress any key to start...")
             
@@ -192,6 +193,8 @@ class AsciinemaPlayer:
         """Setup terminal for playback."""
         if os.isatty(sys.stdin.fileno()):
             self.original_tty_settings = termios.tcgetattr(sys.stdin.fileno())
+            # Set terminal to raw mode to capture all keyboard input
+            tty.setraw(sys.stdin.fileno())
             
     def restore_terminal(self) -> None:
         """Restore original terminal settings."""
@@ -201,20 +204,18 @@ class AsciinemaPlayer:
     def wait_for_keypress(self) -> None:
         """Wait for user to press a key."""
         if os.isatty(sys.stdin.fileno()):
-            tty.setraw(sys.stdin.fileno())
-            try:
-                sys.stdin.read(1)
-            finally:
-                if self.original_tty_settings:
-                    termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.original_tty_settings)
+            # Terminal is already in raw mode from setup_terminal()
+            sys.stdin.read(1)
                     
     def handle_input_during_playback(self) -> bool:
         """Handle keyboard input during playback. Returns True to continue, False to stop."""
         if select.select([sys.stdin], [], [], 0)[0]:
             if os.isatty(sys.stdin.fileno()):
-                tty.setraw(sys.stdin.fileno())
                 try:
                     char = sys.stdin.read(1)
+                    if not char:  # EOF
+                        return True
+                        
                     char_code = ord(char)
                     
                     if char_code == 3:  # Ctrl+C
@@ -225,14 +226,19 @@ class AsciinemaPlayer:
                             self.set_terminal_title(f"{self.base_title} - PAUSED (Space: continue, Tab: skip to next input)")
                         else:
                             self.set_terminal_title(f"{self.base_title} - Playing")
+                        return True  # Consume the input, don't let it through
                     elif char_code == 9:  # Tab - skip to next input
                         self.skip_to_next = True
                         if not self.paused:
-                            self.set_terminal_title(f"{self.base_title} - Skipping to next input...")
+                            self.set_terminal_title(f"{self.base_title} - Skipping to next marker/input...")
+                        return True  # Consume the input, don't let it through
+                    else:
+                        # For any other key, consume it to prevent it appearing in output
+                        return True
                         
-                finally:
-                    if self.original_tty_settings:
-                        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self.original_tty_settings)
+                except OSError:
+                    # Handle potential read errors gracefully
+                    pass
         return True
         
     def wait_while_paused(self) -> None:
@@ -244,12 +250,15 @@ class AsciinemaPlayer:
             except KeyboardInterrupt:
                 raise
                 
-    def find_next_input_event(self, current_index: int) -> int:
-        """Find the index of the next input event after current_index."""
+    def find_next_marker_or_input_event(self, current_index: int) -> int:
+        """Find the index of the next marker or input event after current_index."""
         for i in range(current_index + 1, len(self.events)):
-            if self.events[i][1] == 'i':  # input event
+            event_type = self.events[i][1]
+            event_data = self.events[i][2]
+            # Look for input events or activity resumption markers
+            if event_type == 'i' or (event_type == 'm' and 'activity_resumed_after' in event_data):
                 return i
-        return len(self.events)  # No more input events
+        return len(self.events)  # No more markers or input events
         
     def play_events(self) -> None:
         """Play back the recorded events with timing."""
@@ -260,12 +269,19 @@ class AsciinemaPlayer:
             if self.paused:
                 self.wait_while_paused()
             
-            # Handle skip to next input
+            # Handle skip to next input or marker
             if self.skip_to_next:
-                if event_type == 'i':  # This is an input event
+                # Stop at input events or activity resumption markers
+                if (event_type == 'i' or 
+                    (event_type == 'm' and 'activity_resumed_after' in data)):
                     self.skip_to_next = False
                     self.paused = True
-                    self.set_terminal_title(f"{self.base_title} - PAUSED at next input (Space: continue)")
+                    if event_type == 'i':
+                        self.set_terminal_title(f"{self.base_title} - PAUSED at next input (Space: continue)")
+                    else:
+                        # Extract gap duration from marker data
+                        gap_info = data.replace('activity_resumed_after_', '').replace('s', '')
+                        self.set_terminal_title(f"{self.base_title} - PAUSED after {gap_info}s gap (Space: continue)")
                     self.wait_while_paused()
                 elif event_type in ['o', 'e']:  # Skip delay for output events when skipping
                     # Don't delay when skipping to next input
@@ -305,9 +321,11 @@ class AsciinemaPlayer:
                 
             # Handle different event types
             if event_type == 'o':  # stdout
+                # Write to stdout but don't flush immediately to allow input capture
                 sys.stdout.write(data)
                 sys.stdout.flush()
             elif event_type == 'e':  # stderr (custom event type)
+                # Write stderr to stderr 
                 sys.stderr.write(data)
                 sys.stderr.flush()
             elif event_type == 'i':  # stdin (typically not played back)
@@ -388,7 +406,7 @@ ASCIICAST FORMAT:
     - 'e': Error output (stderr) - custom extension
     - 'i': Input (stdin) - displayed but not interactive
     - 'r': Terminal resize events
-    - 'm': Metadata events
+    - 'm': Metadata events and activity markers (auto-inserted after 5s+ gaps)
 
 PLATFORM SUPPORT:
     - macOS: Uses Terminal.app via AppleScript
@@ -400,7 +418,7 @@ CONTROLS:
     
     During playback:
     - Space: Pause/unpause playback (status shown in terminal title)
-    - Tab: Skip to next input event and pause
+    - Tab: Skip to next input event or activity marker and pause
     - Ctrl+C: Stop playback immediately
     
     Status messages appear in the terminal window title bar, keeping the 

@@ -77,6 +77,22 @@ class TerminalState:
 class MonitorHTTPHandler(SimpleHTTPRequestHandler):
     """HTTP handler that serves the monitor web interface."""
 
+    def log_message(self, format, *args):
+        """Override to suppress access logs during recording."""
+        # Check if server has silent_mode attribute and is enabled
+        if hasattr(self.server, 'silent_mode') and self.server.silent_mode:
+            return  # Suppress logging
+        # Otherwise, use default logging
+        super().log_message(format, *args)
+        
+    def log_error(self, format, *args):
+        """Override to suppress error logs during recording."""
+        # Check if server has silent_mode attribute and is enabled
+        if hasattr(self.server, 'silent_mode') and self.server.silent_mode:
+            return  # Suppress logging
+        # Otherwise, use default logging
+        super().log_error(format, *args)
+
     def do_GET(self):
         if self.path == "/":
             self.send_response(200)
@@ -340,15 +356,18 @@ class WebSocketMonitorServer:
         self.running = False
         self.event_loop = None
         self.broadcast_queue = None
+        self.silent_mode = False  # Suppress output to avoid recording artifacts
+        
+    def log(self, message: str):
+        """Log message only if not in silent mode."""
+        if not self.silent_mode:
+            print(message, file=sys.stderr)
 
     def start_server(self):
         """Start both HTTP and WebSocket servers."""
-        print(f"Monitor server starting...", file=sys.stderr)
-        print(f"  HTTP server: http://{self.host}:{self.http_port}", file=sys.stderr)
-        print(
-            f"  WebSocket server: ws://{self.host}:{self.websocket_port}",
-            file=sys.stderr,
-        )
+        self.log(f"Monitor server starting...")
+        self.log(f"  HTTP server: http://{self.host}:{self.http_port}")
+        self.log(f"  WebSocket server: ws://{self.host}:{self.websocket_port}")
 
         # Start HTTP server in separate thread
         http_thread = threading.Thread(target=self._start_http_server, daemon=True)
@@ -363,10 +382,7 @@ class WebSocketMonitorServer:
         )
         websocket_thread.start()
 
-        print(
-            "Monitor server ready. Use monitor utility or open URL in browser.",
-            file=sys.stderr,
-        )
+        self.log("Monitor server ready. Use monitor utility or open URL in browser.")
 
     def _run_websocket_server(self):
         """Run the WebSocket server in its own event loop."""
@@ -384,13 +400,10 @@ class WebSocketMonitorServer:
                 server = await websockets.serve(
                     self.handle_websocket_client, self.host, self.websocket_port
                 )
-                print(
-                    f"WebSocket server started on ws://{self.host}:{self.websocket_port}",
-                    file=sys.stderr,
-                )
+                self.log(f"WebSocket server started on ws://{self.host}:{self.websocket_port}")
                 return server
             except Exception as e:
-                print(f"Failed to start WebSocket server: {e}", file=sys.stderr)
+                self.log(f"Failed to start WebSocket server: {e}")
                 self.running = False
                 return None
 
@@ -400,7 +413,7 @@ class WebSocketMonitorServer:
             if server and self.running:
                 self.event_loop.run_forever()
         except Exception as e:
-            print(f"WebSocket server error: {e}", file=sys.stderr)
+            self.log(f"WebSocket server error: {e}")
             self.running = False
 
     async def _process_broadcast_queue(self):
@@ -432,21 +445,20 @@ class WebSocketMonitorServer:
         """Start HTTP server for serving web interface."""
 
         class CustomHTTPServer(HTTPServer):
-            def __init__(self, server_address, RequestHandlerClass, websocket_port):
+            def __init__(self, server_address, RequestHandlerClass, websocket_port, silent_mode=False):
                 super().__init__(server_address, RequestHandlerClass)
                 self.websocket_port = websocket_port
+                self.silent_mode = silent_mode
 
         self.http_server = CustomHTTPServer(
-            (self.host, self.http_port), MonitorHTTPHandler, self.websocket_port
+            (self.host, self.http_port), MonitorHTTPHandler, self.websocket_port, self.silent_mode
         )
         self.http_server.serve_forever()
 
     async def handle_websocket_client(self, websocket, path):
         """Handle new WebSocket client connection."""
         self.clients.add(websocket)
-        print(
-            f"Monitor client connected. Total clients: {len(self.clients)}"
-        )
+        self.log(f"Monitor client connected. Total clients: {len(self.clients)}")
 
         try:
             # Send current terminal state to new client
@@ -468,7 +480,7 @@ class WebSocketMonitorServer:
             pass
         finally:
             self.clients.discard(websocket)
-            print(f"Monitor client disconnected. Total clients: {len(self.clients)}")
+            self.log(f"Monitor client disconnected. Total clients: {len(self.clients)}")
 
     async def broadcast_event(self, event_type: str, data: str):
         """Broadcast terminal events to all connected clients."""
@@ -531,6 +543,10 @@ class AsciinemaRecorder:
             self.monitor_server = WebSocketMonitorServer(
                 host=monitor_host, port=monitor_port, buffer_size=monitor_buffer_size
             )
+        
+        # Track last activity time for marker insertion
+        self.last_activity_time = self.start_time
+        self.activity_gap_threshold = 5.0  # seconds
 
     def get_terminal_size(self) -> tuple[int, int]:
         """Get current terminal dimensions."""
@@ -593,10 +609,28 @@ class AsciinemaRecorder:
     def write_event(self, event_type: str, data: str) -> None:
         """Write an event to the asciicast file and broadcast to monitors."""
         if self.cast_file:
-            timestamp = round(time.time() - self.start_time, 3)
+            current_time = time.time()
+            timestamp = round(current_time - self.start_time, 3)
+            
+            # Check if we need to insert a marker for activity gap
+            time_since_last_activity = current_time - self.last_activity_time
+            if (time_since_last_activity >= self.activity_gap_threshold and 
+                event_type in ["i", "o", "e"]):  # Only for actual activity events
+                
+                # Write a marker event just before this event
+                marker_timestamp = round(timestamp - 0.001, 3)  # Slightly before current event
+                marker_event = [marker_timestamp, "m", f"activity_resumed_after_{time_since_last_activity:.1f}s"]
+                self.cast_file.write(json.dumps(marker_event) + "\n")
+                self.cast_file.flush()
+            
+            # Write the actual event
             event = [timestamp, event_type, data]
             self.cast_file.write(json.dumps(event) + "\n")
             self.cast_file.flush()
+            
+            # Update last activity time for input/output events
+            if event_type in ["i", "o", "e"]:
+                self.last_activity_time = current_time
 
             # Broadcast to monitor clients (only output events)
             if self.monitor_server and event_type in ["o", "e"]:
@@ -660,6 +694,8 @@ class AsciinemaRecorder:
 
                 # Start monitor server after fork (parent process only)
                 if self.monitor_server:
+                    # Enable silent mode to prevent recording artifacts
+                    self.monitor_server.silent_mode = True
                     self.monitor_server.start_server()
                     # Give server a moment to start
                     time.sleep(0.5)
