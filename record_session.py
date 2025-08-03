@@ -78,18 +78,27 @@ class MonitorHTTPHandler(SimpleHTTPRequestHandler):
     """HTTP handler that serves the monitor web interface."""
 
     def log_message(self, format, *args):
-        """Override to suppress access logs during recording."""
+        """Override to suppress HTTP access logs during recording.
+
+        Without this, browser connections to the monitoring interface
+        would cause HTTP access logs like "127.0.0.1 - - [timestamp] GET /"
+        to appear in the recorded session output.
+        """
         # Check if server has silent_mode attribute and is enabled
-        if hasattr(self.server, 'silent_mode') and self.server.silent_mode:
-            return  # Suppress logging
+        if hasattr(self.server, "silent_mode") and self.server.silent_mode:
+            return  # Suppress logging to prevent recording contamination
         # Otherwise, use default logging
         super().log_message(format, *args)
-        
+
     def log_error(self, format, *args):
-        """Override to suppress error logs during recording."""
+        """Override to suppress HTTP error logs during recording.
+
+        Prevents HTTP 404 errors and other server errors from appearing
+        in the recorded session output.
+        """
         # Check if server has silent_mode attribute and is enabled
-        if hasattr(self.server, 'silent_mode') and self.server.silent_mode:
-            return  # Suppress logging
+        if hasattr(self.server, "silent_mode") and self.server.silent_mode:
+            return  # Suppress logging to prevent recording contamination
         # Otherwise, use default logging
         super().log_error(format, *args)
 
@@ -357,9 +366,13 @@ class WebSocketMonitorServer:
         self.event_loop = None
         self.broadcast_queue = None
         self.silent_mode = False  # Suppress output to avoid recording artifacts
-        
+
     def log(self, message: str):
-        """Log message only if not in silent mode."""
+        """Log message only if not in silent mode.
+
+        Silent mode prevents monitor server messages from contaminating
+        the recorded session output when recording is active.
+        """
         if not self.silent_mode:
             print(message, file=sys.stderr)
 
@@ -400,7 +413,9 @@ class WebSocketMonitorServer:
                 server = await websockets.serve(
                     self.handle_websocket_client, self.host, self.websocket_port
                 )
-                self.log(f"WebSocket server started on ws://{self.host}:{self.websocket_port}")
+                self.log(
+                    f"WebSocket server started on ws://{self.host}:{self.websocket_port}"
+                )
                 return server
             except Exception as e:
                 self.log(f"Failed to start WebSocket server: {e}")
@@ -445,13 +460,22 @@ class WebSocketMonitorServer:
         """Start HTTP server for serving web interface."""
 
         class CustomHTTPServer(HTTPServer):
-            def __init__(self, server_address, RequestHandlerClass, websocket_port, silent_mode=False):
+            def __init__(
+                self,
+                server_address,
+                RequestHandlerClass,
+                websocket_port,
+                silent_mode=False,
+            ):
                 super().__init__(server_address, RequestHandlerClass)
                 self.websocket_port = websocket_port
                 self.silent_mode = silent_mode
 
         self.http_server = CustomHTTPServer(
-            (self.host, self.http_port), MonitorHTTPHandler, self.websocket_port, self.silent_mode
+            (self.host, self.http_port),
+            MonitorHTTPHandler,
+            self.websocket_port,
+            self.silent_mode,
         )
         self.http_server.serve_forever()
 
@@ -543,10 +567,11 @@ class AsciinemaRecorder:
             self.monitor_server = WebSocketMonitorServer(
                 host=monitor_host, port=monitor_port, buffer_size=monitor_buffer_size
             )
-        
-        # Track last activity time for marker insertion
+
+        # Track last activity time for automatic marker insertion
+        # This enables better navigation in playback by creating natural pause points
         self.last_activity_time = self.start_time
-        self.activity_gap_threshold = 5.0  # seconds
+        self.activity_gap_threshold = 5.0  # Insert markers after 5+ second gaps
 
     def get_terminal_size(self) -> tuple[int, int]:
         """Get current terminal dimensions."""
@@ -611,23 +636,31 @@ class AsciinemaRecorder:
         if self.cast_file:
             current_time = time.time()
             timestamp = round(current_time - self.start_time, 3)
-            
-            # Check if we need to insert a marker for activity gap
+
+            # Check if we need to insert an activity resumption marker
+            # This creates natural navigation points for the Tab key in playback
             time_since_last_activity = current_time - self.last_activity_time
-            if (time_since_last_activity >= self.activity_gap_threshold and 
-                event_type in ["i", "o", "e"]):  # Only for actual activity events
-                
-                # Write a marker event just before this event
-                marker_timestamp = round(timestamp - 0.001, 3)  # Slightly before current event
-                marker_event = [marker_timestamp, "m", f"activity_resumed_after_{time_since_last_activity:.1f}s"]
+            if (
+                time_since_last_activity >= self.activity_gap_threshold
+                and event_type in ["i", "o", "e"]
+            ):  # Only for actual activity events
+                # Write a marker event just before this event to mark activity resumption
+                marker_timestamp = round(
+                    timestamp - 0.001, 3
+                )  # Slightly before current event
+                marker_event = [
+                    marker_timestamp,
+                    "m",
+                    f"activity_resumed_after_{time_since_last_activity:.1f}s",
+                ]
                 self.cast_file.write(json.dumps(marker_event) + "\n")
                 self.cast_file.flush()
-            
+
             # Write the actual event
             event = [timestamp, event_type, data]
             self.cast_file.write(json.dumps(event) + "\n")
             self.cast_file.flush()
-            
+
             # Update last activity time for input/output events
             if event_type in ["i", "o", "e"]:
                 self.last_activity_time = current_time
@@ -694,7 +727,8 @@ class AsciinemaRecorder:
 
                 # Start monitor server after fork (parent process only)
                 if self.monitor_server:
-                    # Enable silent mode to prevent recording artifacts
+                    # Enable silent mode to prevent monitoring messages from contaminating the recording
+                    # This suppresses all HTTP access logs, WebSocket messages, and server status output
                     self.monitor_server.silent_mode = True
                     self.monitor_server.start_server()
                     # Give server a moment to start
@@ -820,7 +854,7 @@ Examples:
 Monitor examples:
   python record_session.py --monitor
   python record_session.py --monitor --monitor-port 9999
-  python record_session.py --monitor --monitor-host 0.0.0.0 --monitor-port 8888
+  python record_session.py --monitor --monitor-interface 0.0.0.0 --monitor-port 8888
         """,
     )
 
@@ -847,7 +881,7 @@ Monitor examples:
     )
 
     parser.add_argument(
-        "--monitor-host",
+        "--monitor-interface",
         default="localhost",
         help="Interface to bind monitor server to (default: localhost)",
     )

@@ -37,20 +37,20 @@ uv run record_session.py --monitor
 uv run record_session.py --monitor --monitor-port 9999
 
 # Recording with custom interface and port
-uv run record_session.py --monitor --monitor-host 0.0.0.0 --monitor-port 8888
+uv run record_session.py --monitor --monitor-interface 0.0.0.0 --monitor-port 8888
 
 # Full example
-uv run record_session.py --shell /bin/bash --output session.cast --monitor --monitor-host 192.168.1.100 --monitor-port 8080
+uv run record_session.py --shell /bin/bash --output session.cast --monitor --monitor-interface 192.168.1.100 --monitor-port 8080
 ```
 
 ### Command Line Arguments
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--monitor` | `False` | Enable terminal monitoring server |
-| `--monitor-port` | `8888` | Port for HTTP server (WebSocket will use port+1) |
-| `--monitor-host` | `localhost` | Interface to bind to (`localhost`, `0.0.0.0`, specific IP) |
-| `--monitor-buffer-size` | `1000` | Number of recent output chunks to buffer for new clients |
+| Argument                | Default     | Description                                                |
+| ----------------------- | ----------- | ---------------------------------------------------------- |
+| `--monitor`             | `False`     | Enable terminal monitoring server                          |
+| `--monitor-port`        | `8888`      | Port for HTTP server (WebSocket will use port+1)           |
+| `--monitor-interface`   | `localhost` | Interface to bind to (`localhost`, `0.0.0.0`, specific IP) |
+| `--monitor-buffer-size` | `1000`      | Number of recent output chunks to buffer for new clients   |
 
 ### Implementation Requirements
 
@@ -63,7 +63,7 @@ class WebSocketMonitorServer:
     - HTTP server on specified port (serves web interface)
     - WebSocket server on port+1 (handles real-time communication)
     """
-    
+
     def __init__(self, host: str = "localhost", port: int = 8888, buffer_size: int = 1000):
         self.host = host
         self.http_port = port
@@ -71,11 +71,11 @@ class WebSocketMonitorServer:
         self.buffer_size = buffer_size
         self.clients = set()
         self.terminal_state = TerminalState(buffer_size)
-        
+
     def start_server(self):
         """Start both HTTP and WebSocket servers concurrently."""
         pass
-        
+
     async def broadcast_event(self, event_type: str, data: str):
         """Broadcast terminal events to all connected clients."""
         pass
@@ -88,13 +88,13 @@ class TerminalState:
     """
     Maintains terminal state and output buffer for client synchronization.
     """
-    
+
     def __init__(self, buffer_size: int = 1000):
         self.width = 80
         self.height = 24
         self.recent_output = collections.deque(maxlen=buffer_size)
         self.session_metadata = {}
-        
+
     def process_output(self, event_type: str, data: str):
         """Process and store terminal output."""
         self.recent_output.append({
@@ -102,7 +102,7 @@ class TerminalState:
             'event_type': event_type,
             'data': data
         })
-        
+
     def get_sync_data(self) -> dict:
         """Get state data for new client synchronization."""
         return {
@@ -123,22 +123,22 @@ The monitor server integrates with the existing recorder at these points:
 
 ```python
 class AsciinemaRecorder:
-    def __init__(self, output_file: str, shell_command: str, 
-                 monitor_enabled: bool = False, 
-                 monitor_host: str = "localhost", 
+    def __init__(self, output_file: str, shell_command: str,
+                 monitor_enabled: bool = False,
+                 monitor_host: str = "localhost",
                  monitor_port: int = 8888):
         # ... existing init code ...
         self.monitor_server = None
         if monitor_enabled:
             self.monitor_server = WebSocketMonitorServer(
-                host=monitor_host, 
+                host=monitor_host,
                 port=monitor_port
             )
-    
+
     def write_event(self, event_type: str, data: str) -> None:
         """Enhanced to broadcast to monitor clients."""
         # ... existing asciicast writing code ...
-        
+
         # Broadcast to monitor clients
         if self.monitor_server:
             asyncio.create_task(
@@ -185,12 +185,12 @@ uv run monitor_session.py --list
 
 ### Command Line Arguments
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `url` | Required | URL of the monitor server (http://host:port) |
+| Argument    | Default        | Description                                               |
+| ----------- | -------------- | --------------------------------------------------------- |
+| `url`       | Required       | URL of the monitor server (http://host:port)              |
 | `--browser` | System default | Browser to use (`chrome`, `firefox`, `safari`, `default`) |
-| `--no-open` | `False` | Don't auto-open browser, just show URL |
-| `--list` | `False` | List available sessions on local network (future feature) |
+| `--no-open` | `False`        | Don't auto-open browser, just show URL                    |
+| `--list`    | `False`        | List available sessions on local network (future feature) |
 
 ### Implementation
 
@@ -218,31 +218,31 @@ Examples:
   monitor_session.py --no-open http://server.example.com:9999
         """
     )
-    
+
     parser.add_argument("url", help="Monitor server URL (http://host:port)")
     parser.add_argument("--browser", help="Browser to use (chrome, firefox, safari, default)")
     parser.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
-    
+
     args = parser.parse_args()
-    
+
     # Validate URL
     parsed_url = urllib.parse.urlparse(args.url)
     if not parsed_url.scheme or not parsed_url.netloc:
         print(f"Error: Invalid URL format: {args.url}")
         print("Expected format: http://hostname:port")
         sys.exit(1)
-    
+
     if args.no_open:
         print(f"Monitor URL: {args.url}")
         print("Open this URL in your browser to view the terminal session.")
     else:
         print(f"Opening monitor session: {args.url}")
-        
+
         if args.browser:
             # Try to use specific browser
             browser_map = {
                 'chrome': 'google-chrome',
-                'firefox': 'firefox', 
+                'firefox': 'firefox',
                 'safari': 'safari'
             }
             browser_cmd = browser_map.get(args.browser.lower(), args.browser)
@@ -253,10 +253,10 @@ Examples:
                 webbrowser.open(args.url)
         else:
             webbrowser.open(args.url)
-        
+
         print("Browser opened. If the session is active, you should see terminal output.")
         print("Press Ctrl+C to exit this utility (won't affect the session).")
-        
+
         try:
             input()  # Keep utility running
         except KeyboardInterrupt:
@@ -277,21 +277,22 @@ if __name__ == "__main__":
   "type": "client_hello",
   "client_info": {
     "user_agent": "Mozilla/5.0...",
-    "terminal_size": {"width": 120, "height": 40}
+    "terminal_size": { "width": 120, "height": 40 }
   }
 }
 ```
 
 ```json
 {
-  "type": "terminal_resize", 
-  "size": {"width": 100, "height": 30}
+  "type": "terminal_resize",
+  "size": { "width": 100, "height": 30 }
 }
 ```
 
 #### 2. Server → Client Messages
 
 **Initial Synchronization:**
+
 ```json
 {
   "type": "terminal_sync",
@@ -301,7 +302,7 @@ if __name__ == "__main__":
     "shell_command": "/bin/bash",
     "recording_file": "session.cast"
   },
-  "terminal_size": {"width": 80, "height": 24},
+  "terminal_size": { "width": 80, "height": 24 },
   "recent_output": [
     {
       "timestamp": 1704067201.123,
@@ -309,7 +310,7 @@ if __name__ == "__main__":
       "data": "$ ls -la\r\n"
     },
     {
-      "timestamp": 1704067201.456, 
+      "timestamp": 1704067201.456,
       "event_type": "o",
       "data": "total 48\r\n"
     }
@@ -323,6 +324,7 @@ if __name__ == "__main__":
 ```
 
 **Real-time Data:**
+
 ```json
 {
   "type": "terminal_data",
@@ -333,19 +335,20 @@ if __name__ == "__main__":
 ```
 
 **Session Events:**
+
 ```json
 {
   "type": "session_event",
   "event": "client_connected",
-  "data": {"client_count": 3}
+  "data": { "client_count": 3 }
 }
 ```
 
 ```json
 {
-  "type": "session_event", 
+  "type": "session_event",
   "event": "session_ended",
-  "data": {"reason": "shell_exit", "timestamp": 1704067400.000}
+  "data": { "reason": "shell_exit", "timestamp": 1704067400.0 }
 }
 ```
 
@@ -363,81 +366,90 @@ The HTTP server serves a single-page application with:
 ### JavaScript Client Behavior
 
 #### Connection Handling
+
 ```javascript
-const wsUrl = `ws://${window.location.hostname}:${parseInt(window.location.port) + 1}`;
+const wsUrl = `ws://${window.location.hostname}:${
+  parseInt(window.location.port) + 1
+}`;
 const ws = new WebSocket(wsUrl);
 
 ws.onopen = () => {
-    updateStatus('Connected', 'success');
-    ws.send(JSON.stringify({
-        type: 'client_hello',
-        client_info: {
-            user_agent: navigator.userAgent,
-            terminal_size: {width: term.cols, height: term.rows}
-        }
-    }));
+  updateStatus("Connected", "success");
+  ws.send(
+    JSON.stringify({
+      type: "client_hello",
+      client_info: {
+        user_agent: navigator.userAgent,
+        terminal_size: { width: term.cols, height: term.rows },
+      },
+    })
+  );
 };
 ```
 
 #### Mid-Stream Synchronization
+
 ```javascript
 function handleTerminalSync(data) {
-    // Clear terminal and show sync message
-    term.clear();
-    showSyncNotification(data.buffer_info);
-    
-    // Resize terminal to match session
-    term.resize(data.terminal_size.width, data.terminal_size.height);
-    
-    // Replay recent output with progress indication
-    replayOutput(data.recent_output, () => {
-        showLiveIndicator();
-    });
+  // Clear terminal and show sync message
+  term.clear();
+  showSyncNotification(data.buffer_info);
+
+  // Resize terminal to match session
+  term.resize(data.terminal_size.width, data.terminal_size.height);
+
+  // Replay recent output with progress indication
+  replayOutput(data.recent_output, () => {
+    showLiveIndicator();
+  });
 }
 
 function replayOutput(events, callback) {
-    let index = 0;
-    const replaySpeed = 5; // events per batch
-    
-    function replayBatch() {
-        const batch = events.slice(index, index + replaySpeed);
-        batch.forEach(event => {
-            if (event.event_type === 'o' || event.event_type === 'e') {
-                term.write(event.data);
-            }
-        });
-        
-        index += replaySpeed;
-        if (index < events.length) {
-            requestAnimationFrame(replayBatch);
-        } else {
-            callback();
-        }
+  let index = 0;
+  const replaySpeed = 5; // events per batch
+
+  function replayBatch() {
+    const batch = events.slice(index, index + replaySpeed);
+    batch.forEach((event) => {
+      if (event.event_type === "o" || event.event_type === "e") {
+        term.write(event.data);
+      }
+    });
+
+    index += replaySpeed;
+    if (index < events.length) {
+      requestAnimationFrame(replayBatch);
+    } else {
+      callback();
     }
-    
-    replayBatch();
+  }
+
+  replayBatch();
 }
 ```
 
 ### User Interface Features
 
 1. **Connection Status Indicator**
+
    - Green: Connected and receiving data
-   - Yellow: Connected but no recent data  
+   - Yellow: Connected but no recent data
    - Red: Disconnected
 
 2. **Session Information Panel**
+
    - Session start time
    - Shell command being recorded
    - Number of connected monitors
    - Recording file name
 
 3. **Mid-Stream Join Notification**
+
    ```
    ┌─────────────────────────────────────────────────────┐
    │ 📺 Joined session in progress                       │
    │ Started: 2024-01-15 14:30:22                        │
-   │ Showing last 100 events (2.3 minutes of output)    │ 
+   │ Showing last 100 events (2.3 minutes of output)    │
    │ Live output begins below...                         │
    └─────────────────────────────────────────────────────┘
    ```
@@ -451,27 +463,31 @@ function replayOutput(events, callback) {
 ## Implementation Roadmap
 
 ### Phase 1: Core Functionality
+
 - [ ] Implement WebSocketMonitorServer class
 - [ ] Integrate with existing AsciinemaRecorder
 - [ ] Create basic HTML/JavaScript client
 - [ ] Implement terminal state synchronization
 - [ ] Add command line arguments to recorder
 
-### Phase 2: Standalone Monitor Utility  
+### Phase 2: Standalone Monitor Utility
+
 - [ ] Implement monitor_session.py utility
 - [ ] Add browser detection and launching
 - [ ] Add URL validation and error handling
 - [ ] Test cross-platform browser opening
 
 ### Phase 3: Enhanced Features
+
 - [ ] Add session metadata display
 - [ ] Implement connection status indicators
 - [ ] Add terminal control features (font size, fullscreen)
 - [ ] Optimize mid-stream synchronization
 
 ### Phase 4: Polish and Testing
+
 - [ ] Add comprehensive error handling
-- [ ] Implement graceful shutdown procedures  
+- [ ] Implement graceful shutdown procedures
 - [ ] Add logging and debugging options
 - [ ] Test with various terminal applications
 - [ ] Performance testing with multiple clients
@@ -507,7 +523,7 @@ This maintains the project's minimal dependency philosophy while enabling robust
 ## Testing Strategy
 
 1. **Unit Tests**: Test WebSocket message handling and terminal state management
-2. **Integration Tests**: Test recorder + monitor server integration  
+2. **Integration Tests**: Test recorder + monitor server integration
 3. **Browser Tests**: Test client JavaScript in multiple browsers
 4. **Network Tests**: Test remote monitoring scenarios
 5. **Load Tests**: Test multiple concurrent monitor clients

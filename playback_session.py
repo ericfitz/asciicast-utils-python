@@ -35,7 +35,12 @@ class AsciinemaPlayer:
         self.base_title = f"Playing: {Path(cast_file).name}"
         
     def set_terminal_title(self, title: str) -> None:
-        """Set the terminal window title using ANSI escape sequences."""
+        """Set the terminal window title using ANSI escape sequences.
+        
+        Writes to stderr instead of stdout to avoid interfering with the
+        session output being played back. This keeps the playback clean
+        while still providing status feedback in the window title.
+        """
         # Use both OSC 0 (icon and title) and OSC 2 (title only) for compatibility
         # Write to stderr to avoid interfering with session output
         sys.stderr.write(f'\033]0;{title}\007')
@@ -190,10 +195,15 @@ class AsciinemaPlayer:
             print(f"\n\nPlayback finished: {Path(self.cast_file).name}")
             
     def setup_terminal(self) -> None:
-        """Setup terminal for playback."""
+        """Setup terminal for playback with responsive keyboard controls.
+        
+        Sets terminal to raw mode to capture all keyboard input without
+        echo, preventing control keys (Space, Tab) from appearing in
+        the session output while enabling immediate response to controls.
+        """
         if os.isatty(sys.stdin.fileno()):
             self.original_tty_settings = termios.tcgetattr(sys.stdin.fileno())
-            # Set terminal to raw mode to capture all keyboard input
+            # Set terminal to raw mode to capture all keyboard input without echo
             tty.setraw(sys.stdin.fileno())
             
     def restore_terminal(self) -> None:
@@ -226,14 +236,15 @@ class AsciinemaPlayer:
                             self.set_terminal_title(f"{self.base_title} - PAUSED (Space: continue, Tab: skip to next input)")
                         else:
                             self.set_terminal_title(f"{self.base_title} - Playing")
-                        return True  # Consume the input, don't let it through
-                    elif char_code == 9:  # Tab - skip to next input
+                        return True  # Consume the input to prevent space appearing in session
+                    elif char_code == 9:  # Tab - skip to next input/marker
                         self.skip_to_next = True
                         if not self.paused:
                             self.set_terminal_title(f"{self.base_title} - Skipping to next marker/input...")
-                        return True  # Consume the input, don't let it through
+                        return True  # Consume the input to prevent tab appearing in session
                     else:
-                        # For any other key, consume it to prevent it appearing in output
+                        # Consume all other keys to prevent them from contaminating session output
+                        # This ensures only the actual recorded session content is displayed
                         return True
                         
                 except OSError:
@@ -269,9 +280,10 @@ class AsciinemaPlayer:
             if self.paused:
                 self.wait_while_paused()
             
-            # Handle skip to next input or marker
+            # Handle skip to next input or activity marker
+            # This allows Tab navigation to jump between user commands and natural pause points
             if self.skip_to_next:
-                # Stop at input events or activity resumption markers
+                # Stop at user input events or activity resumption markers (5+ second gaps)
                 if (event_type == 'i' or 
                     (event_type == 'm' and 'activity_resumed_after' in data)):
                     self.skip_to_next = False
@@ -279,7 +291,7 @@ class AsciinemaPlayer:
                     if event_type == 'i':
                         self.set_terminal_title(f"{self.base_title} - PAUSED at next input (Space: continue)")
                     else:
-                        # Extract gap duration from marker data
+                        # Extract gap duration from marker data for user feedback
                         gap_info = data.replace('activity_resumed_after_', '').replace('s', '')
                         self.set_terminal_title(f"{self.base_title} - PAUSED after {gap_info}s gap (Space: continue)")
                     self.wait_while_paused()
