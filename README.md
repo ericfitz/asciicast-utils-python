@@ -1,6 +1,10 @@
 # asciicast-utils-python
 
-Python utilities for recording and playbook of asciicast files. This project provides a comprehensive terminal session recorder and interactive playbook system that captures stdin, stdout, and stderr streams in real-time.
+Python utilities for recording, monitoring and playbook of terminal sessions as asciicast files. This project provides a comprehensive terminal session recorder and interactive playbook system that captures stdin, stdout, and stderr streams in real-time.
+
+I built this so that I could use it as part of a project to monitor and record SSH terminal sessions to production hosts and keep a record of operator access.
+
+Implemented with Claude Code, prompt file is in the repo.
 
 ## Features
 
