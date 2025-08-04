@@ -1,6 +1,6 @@
 # asciicast-utils-python
 
-Python utilities for recording, monitoring and playback of terminal sessions as asciicast files. This project provides a comprehensive terminal session recorder and interactive playbook system that captures stdin, stdout, and stderr streams in real-time.
+These are Python utilities for recording, monitoring and playback of terminal sessions as asciicast files. This project provides a comprehensive terminal session recorder and interactive playback system that captures stdin, stdout, and stderr streams in real-time.
 
 I built this so that I could use it as part of a project to monitor and record SSH terminal sessions to production hosts and keep a record of operator access.
 
@@ -12,7 +12,7 @@ Implemented with Claude Code, prompt file is in the repo.
 
 - **Real-time terminal recording** with immediate file output
 - **Separate stderr capture** and recording (format extension)
-- **Automatic activity markers** inserted after 5+ second gaps for better navigation
+- **Automatic activity markers** inserted after gaps in user activity for better navigation during playback
 - **Real-time monitoring server** with web interface and WebSocket streaming
 - **Terminal state monitoring** including window resize detection
 - **Cross-platform support** for macOS and Linux
@@ -24,12 +24,12 @@ Implemented with Claude Code, prompt file is in the repo.
 - **Cross-platform terminal window creation** for dedicated playback sessions
 - **Real-time status updates** in terminal window title
 - **Speed control** and maximum delay capping to skip long pauses
-- **Activity marker navigation** for jumping between command sequences
+- **Activity marker navigation** for jumping to interesting events in the session
 - **Clean playback experience** with no control artifacts in session output
 
 ### Monitoring (`monitor_session.py`) - _Optional_
 
-- **Real-time session monitoring** via web browser interface
+- **Real-time session monitoring** via web browser interface gives an "over-the-shoulder" capability to monitor a session in progress.
 - **WebSocket streaming** for live terminal output
 - **Multiple client support** with session synchronization
 - **Clean recording** with no monitoring artifacts in cast files
@@ -112,7 +112,7 @@ uv run record_session.py --monitor
 
 ### Architecture Overview
 
-The recorder uses a sophisticated multi-process architecture:
+The recorder uses a multi-process architecture:
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
@@ -228,7 +228,7 @@ This enables accurate playback of programs that modify terminal behavior (like `
 
 ### Clean Recording with Monitoring
 
-The monitoring server is designed to run completely invisibly during recording:
+The monitoring server, if used, is designed to run completely invisibly during recording:
 
 - **Silent mode**: All server logging is suppressed to prevent contamination of cast files
 - **HTTP log suppression**: Access logs from web browser connections don't appear in recordings
@@ -237,7 +237,7 @@ The monitoring server is designed to run completely invisibly during recording:
 ### Activity Gap Detection
 
 - **Automatic markers**: Inserted after 5+ seconds of inactivity to create natural navigation points
-- **Smart timing**: Markers placed just before activity resumes for seamless playback
+- **Smart timing**: Markers are placed just before activity resumes for seamless playback
 - **Enhanced navigation**: Tab key jumps to both input events and activity resumption points
 
 ### Cross-Platform Playback
@@ -279,7 +279,7 @@ The monitoring server is designed to run completely invisibly during recording:
 
 ### Compatibility Notes
 
-- Standard asciicast players will ignore unknown `"e"` events gracefully
+- Standard asciicast players should ignore unknown `"e"` events gracefully
 - Resize and marker events use standard asciicast v2 event types
 - Files are fully compatible with asciinema player for standard events
 - Extended events require custom players or post-processing for full feature support
@@ -300,7 +300,7 @@ The monitoring server is designed to run completely invisibly during recording:
 
 ### System Administration
 
-- Log shell sessions for compliance
+- Log shell sessions for security or compliance
 - Record troubleshooting procedures
 - Capture system diagnostic output
 
