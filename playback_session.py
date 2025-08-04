@@ -343,10 +343,10 @@ class AsciinemaPlayer:
             elif event_type == 'i':  # stdin (typically not played back)
                 pass
             elif event_type == 'r':  # resize event
-                # Parse resize data (format: "height,width")
+                # Parse resize data (format: "widthxheight")
                 try:
-                    if ',' in data:
-                        height, width = map(int, data.split(','))
+                    if 'x' in data:
+                        width, height = map(int, data.split('x'))
                         # Send resize escape sequence
                         sys.stdout.write(f'\033[8;{height};{width}t')
                         sys.stdout.flush()

@@ -623,7 +623,7 @@ class AsciinemaRecorder:
                     self.last_winsize = current_winsize
                 elif current_winsize != self.last_winsize:
                     height, width = current_winsize[:2]
-                    self.write_event("r", f"{height},{width}")
+                    self.write_event("r", f"{width}x{height}")
                     self.last_winsize = current_winsize
             except (OSError, IOError):
                 pass

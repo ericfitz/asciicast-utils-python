@@ -167,22 +167,14 @@ This implementation extends the standard asciicast v2 format with:
 - Better debugging of recorded sessions
 - Accurate reproduction of original terminal behavior
 
-#### Enhanced Resize Events (`"r"`)
-
-```json
-[2.567, "r", "24,80"]
-```
-
-**Format**: `"height,width"` - More precise than standard format
-
-#### Terminal State Markers (`"m"`)
+#### Auto-Added Terminal State Markers (`"m"`) - Standard asciicast v2 format
 
 ```json
 [3.890, "m", "terminal_attrs_changed"]
 [45.123, "m", "activity_resumed_after_5.2s"]
 ```
 
-**Purpose**: Records terminal attribute changes and activity resumption markers:
+**Purpose**: These markers are added automatically to signal the player, to make replay more accurate and make navidation more convenient during playback
 
 - `terminal_attrs_changed`: Terminal settings modified (raw mode, echo, etc.)
 - `activity_resumed_after_X.Xs`: Automatic markers inserted after 5+ second activity gaps
@@ -198,7 +190,7 @@ This implementation extends the standard asciicast v2 format with:
 [1.459, "o", "ls\r\n"]
 [1.567, "o", "file1.txt  file2.txt\r\n"]
 [2.234, "e", "ls: cannot access 'nonexistent': No such file or directory\n"]
-[3.123, "r", "30,100"]
+[3.123, "r", "100x30"]
 [4.567, "i", "exit\r"]
 [4.568, "o", "exit\r\n"]
 ```

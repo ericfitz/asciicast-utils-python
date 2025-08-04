@@ -4,8 +4,8 @@
 
 ```
 I want you to implement a python script that will (1) launch a terminal-based
- executable file, (2) capture stdin, stdout, and stderr output from the
- launched program, (3) echo the output to the terminal where the python script
+executable file, (2) capture stdin, stdout, and stderr output from the
+launched program, (3) echo the output to the terminal where the python script
 was run (4) write the captured stdio streams to an output file in asciicast
 format, as the input is captured. The script will take two optional parameters:
 --shell and --output, which will each require a file path. If --shell is not
@@ -49,8 +49,8 @@ is there any terminal i/o that we might be missing with this approach?
 ```
 Do we risk missing information due to timing precision, or do we just risk
 batching? What approach would you recommend for better handling of stderr? What
- escape sequences might we miss, and how might we capture them? What side
- effects are there for not capturing cursor position queries and responses?
+escape sequences might we miss, and how might we capture them? What side
+effects are there for not capturing cursor position queries and responses?
 ```
 
 ## 7
@@ -267,4 +267,27 @@ please update the readme file with any relevant information based on our
 changes. Please add comments to the scripts where we implemented special
 logic to work around problems. Please review the command line help for the 3
 tools and update anything that is incomplete or incorrect.
+```
+
+## 34 Aligning implementation of resize records with Asciicast v2 standard
+
+```
+In our project, we made a change to the asciicast file format "r" ("resize")
+record type.
+
+Normal asciicast v2 uses this format:
+[5.0, "r", "100x50"]
+where the data "100x50" indicates 50 lines of 100 columns
+
+In our modified version, we use this format:
+[2.567, "r", "24,80"]
+where the data "24,80" indicates 24 lines of 80 columns.
+
+Please change our implementation to match the asciicast standard.  This means
+changing the order of the values in the data, and changing the delimiter from
+"," to "x".  At a minimum, we need to change record_session.py and
+playback_session.py and remove the text in the readme that indicates we're
+using a different format than normal asciicast v2.  But check for code
+elsewhere like in the monitor_session.py script and any other references
+anywhere in the project.
 ```
