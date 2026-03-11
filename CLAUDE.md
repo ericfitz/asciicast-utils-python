@@ -37,6 +37,15 @@ Key implementation details:
 - Signal forwarding (Ctrl+C) to child processes
 - Automatic terminal size detection and PTY configuration
 
+### consolidate_input.py
+Preprocessing tool built around the `InputConsolidator` class:
+
+- **Input consolidation**: Accumulates per-keystroke "i" events and appends "c" (command) records per typed command line
+- **Non-destructive**: All original events preserved unchanged; "c" records are a new event type
+- **Interleave-aware**: Accumulates input across intervening non-"i" events (shell echo, etc.)
+- **Flush triggers**: Carriage return, newline, Ctrl+C, or end of file
+- **Event placement**: "c" record appended after the flush-triggering "i" event, with the first keystroke's timestamp
+
 ### Asciicast Format
 The script generates asciicast v2 files:
 - Header: JSON object with version, dimensions, timestamp, shell command
