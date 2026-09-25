@@ -919,7 +919,7 @@ Monitor examples:
     print(f"Shell: {shell_command}")
     if args.monitor:
         print(
-            f"Monitor server will start on http://{args.monitor_host}:{args.monitor_port}"
+            f"Monitor server will start on http://{args.monitor_interface}:{args.monitor_port}"
         )
     print("Press Ctrl+C or exit shell to stop recording\n")
 
@@ -928,7 +928,7 @@ Monitor examples:
         output_file=str(output_path),
         shell_command=shell_command,
         monitor_enabled=args.monitor,
-        monitor_host=args.monitor_host,
+        monitor_host=args.monitor_interface,
         monitor_port=args.monitor_port,
         monitor_buffer_size=args.monitor_buffer_size,
     )
