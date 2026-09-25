@@ -1,13 +1,13 @@
 # CLAUDE.md
 
-Python utilities for recording and preprocessing asciicast v2 terminal sessions. Standard library only (Python 3.8+); each script carries PEP 723 inline metadata so `uv run` works without a project.
+Python utilities for recording and preprocessing asciicast v2 terminal sessions. Python 3.8+. `record_session.py` depends on `websockets` (for `--monitor`); `consolidate_input.py` is standard library only. Each script carries PEP 723 inline metadata so `uv run` installs dependencies without a project.
 
 ## Running
 
 ```bash
 uv run record_session.py                                    # default shell, auto-named output
 uv run record_session.py --shell /bin/bash --output my.cast
-python3 record_session.py --shell zsh                       # plain Python also works
+python3 record_session.py --shell zsh                       # plain Python needs websockets installed
 ```
 
 ## Architecture
