@@ -1,56 +1,17 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Python utilities for recording and preprocessing asciicast v2 terminal sessions. Standard library only (Python 3.8+); each script carries PEP 723 inline metadata so `uv run` works without a project.
 
-## Project Overview
-
-Python utilities for recording and playback of asciicast files. The main functionality is a terminal session recorder that captures stdin/stdout/stderr and saves sessions in asciicast v2 format.
-
-## Running the Scripts
-
-The main script uses uv's inline script dependencies feature:
+## Running
 
 ```bash
-# Record a session with default shell and auto-generated filename
-uv run record_session.py
-
-# Specify shell and output file
-uv run record_session.py --shell /bin/bash --output my_session.cast
-
-# Traditional Python execution also works
-python3 record_session.py --shell zsh
+uv run record_session.py                                    # default shell, auto-named output
+uv run record_session.py --shell /bin/bash --output my.cast
+python3 record_session.py --shell zsh                       # plain Python also works
 ```
 
-## Code Architecture
+## Architecture
 
-### record_session.py
-The main terminal recording script built around the `AsciinemaRecorder` class:
+**`record_session.py`** — `AsciinemaRecorder`. Forks a child under a PTY (`pty.openpty()` + `os.fork()`), multiplexes fds with `select.select()`, and writes asciicast v2: a JSON header (version, dimensions, timestamp, shell) followed by newline-delimited `[timestamp, "i"|"o", data]` events. Timestamps are rounded to 3 decimals; `termios` settings are saved and restored; Ctrl+C is forwarded to the child; terminal size is detected and applied to the PTY. Works on macOS and Linux.
 
-- **PTY-based capture**: Uses `pty.openpty()` and `os.fork()` to create a pseudo-terminal that captures all I/O
-- **Real-time processing**: Uses `select.select()` to monitor multiple file descriptors simultaneously
-- **Asciicast v2 format**: Writes newline-delimited JSON with header + event stream
-- **Cross-platform**: Works on macOS and Linux using standard library modules
-
-Key implementation details:
-- Timestamps rounded to 3 decimal places for asciicast output
-- Terminal settings preserved and restored using `termios`
-- Signal forwarding (Ctrl+C) to child processes
-- Automatic terminal size detection and PTY configuration
-
-### consolidate_input.py
-Preprocessing tool built around the `InputConsolidator` class:
-
-- **Input consolidation**: Accumulates per-keystroke "i" events and appends "c" (command) records per typed command line
-- **Non-destructive**: All original events preserved unchanged; "c" records are a new event type
-- **Interleave-aware**: Accumulates input across intervening non-"i" events (shell echo, etc.)
-- **Flush triggers**: Carriage return, newline, Ctrl+C, or end of file
-- **Event placement**: "c" record appended after the flush-triggering "i" event, with the first keystroke's timestamp
-
-### Asciicast Format
-The script generates asciicast v2 files:
-- Header: JSON object with version, dimensions, timestamp, shell command
-- Events: JSON arrays `[timestamp, event_type, data]` where event_type is "i" (input) or "o" (output)
-
-## Development Notes
-
-The project uses no external dependencies beyond Python 3.8+ standard library. The uv script configuration is embedded in the file header using PEP 723 inline script metadata.
+**`consolidate_input.py`** — `InputConsolidator`. Accumulates per-keystroke `"i"` events into one `"c"` (command) record per typed line. Original events are preserved unchanged; the `"c"` record is appended after the flushing `"i"` event with the first keystroke's timestamp. Accumulation spans intervening non-`"i"` events (shell echo). Flush triggers: CR, LF, Ctrl+C, or end of file.
